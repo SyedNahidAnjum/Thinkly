@@ -1,0 +1,12 @@
+name: Next_Word_Prediction
+title: final_project
+username: syednahid
+account: syednahid
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12750986
+bundleId: 9117674
+url: https://syednahid.shinyapps.io/Next_Word_Prediction/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

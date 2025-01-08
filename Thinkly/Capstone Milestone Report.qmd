@@ -1,0 +1,164 @@
+---
+title: "Capstone Project Milestone Report"
+author: "nahid"
+format: html
+editor: visual
+---
+
+### Introduction
+
+This milestone report is part of the Capstone Project for the Coursera Data Science Specialization. In this document, we provide an overview of the exploratory data analysis conducted for the project, and outline our strategy for developing the prediction algorithm and Shiny application. The primary objective of this analysis is to gain insights into the data, which will inform the development of an effective predictive model. The final goal is to build a model capable of predicting the next word in a phrase, which will be implemented in a Shiny app.
+
+## **Download Dataset & Load Data**
+
+First, call the libraries that will be used.
+
+```{# Libraries and options ####}
+rm(list=ls(all=TRUE))
+library(dplyr)
+library(quanteda)
+library(stringr)
+library(tm)
+library(readr)
+library(caTools)
+library(tidyr)
+```
+
+#### **Download Dataset**
+
+download the dataset, unzip it and report some basic stats of the individual files.
+
+```{if (!file.exists("Coursera-SwiftKey.zip")) {}
+  download.file(url = "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip",
+                destfile = "Coursera-SwiftKey.zip", method = "curl")
+  unzip("Coursera-SwiftKey.zip")
+}
+
+```
+
+#### Read and prepare data:
+
+```{# Read and prepare data ####}
+
+# Read in data
+
+dBlog <- readLines("./en_US.blogs.txt", encoding = "UTF-8", skipNul = TRUE)
+news<-readLines(con=file("final//en_US//en_US.news.txt", open="rb"), encoding="UTF-8")
+# remove the "SUB" non-ASCII character
+dNews<-gsub("\032","",news)
+dTwitter <- readLines("./en_US.twitter.txt", encoding = "UTF-8", skipNul = TRUE)
+library(stringi)
+
+```
+
+### Exploratory Analysis
+
+Now that the data is prepared, I’m ready to perform an exploratory analysis. This step will help identify the most frequently occurring words and phrases in the dataset. I will focus on examining word frequencies using unigrams (single words), bigrams (two-word combinations), and trigrams (three-word combinations). By analyzing these n-grams, we can better understand the patterns and structure of the text, which will be crucial for developing the predictive model.
+
+```{# find the number of lines (blogs/news/twitter) in each dataset}
+length(dBlog); length(dNews); length(dTwitter)
+# find the number of words in each file
+stri_stats_latex(dBlog)
+stri_stats_latex(dNews)
+stri_stats_latex(dTwitter)
+blog_words<-stri_count_words(dBlog)
+news_words<-stri_count_words(dNews)
+twitter_words<-stri_count_words(dTwitter)
+summary(blog_words)
+summary(news_words)
+summary(twitter_words)
+
+```
+
+```{r, echo=FALSE, out.width="80%"}
+knitr::include_graphics("summary.png")
+```
+
+```{r, echo=FALSE, out.width="80%"}
+knitr::include_graphics("tweet.png")
+```
+
+As anticipated, blogs have the longest average length among the three text types, with an average of 41.75 words. In contrast, tweets are the shortest, averaging just 12.75 words. The mean length of a blog significantly exceeds the median, indicating the presence of some very long blogs that skew the distribution. In fact, 75% of blogs contain 60 words or fewer, while the longest blog reaches a maximum of 6,726 words.
+
+### Sampling the Data
+
+Due to the large size of the data files, I will extract a 1% sample from each file. This will help manage memory and processing time more efficiently. The sampled data will be saved in an RDS file named `sample.rds`, which can be loaded for analysis. This approach ensures we conserve space while retaining a representative portion of the data for exploration and modeling.
+
+```{saveRDS(dBlog,"dBlog.RData")}
+saveRDS(dNews,"dNews.RData")
+saveRDS(dTwitter,"dTwitter.RData")
+rm(dBlog,dNews,dTwitter)
+
+dBlog <- readRDS("dBlog.RData"); dNews <- readRDS("dNews.RData"); dTwitter <- readRDS("dTwitter.RData")
+
+
+combinedRaw = c(dBlog, dNews, dTwitter)
+
+combinedRaw<-gsub("\\b[A-Z a-z 0-9._ - ]*[@](.*?)[.]{1,3} \\b", "", combinedRaw)
+
+saveRDS(combinedRaw,"combinedRaw.RData")
+
+
+
+
+# Sample and combine data  
+set.seed(1220)
+n = 1/10
+combined = sample(combinedRaw, length(combinedRaw) * n)
+rm(combinedRaw)
+# Split into train and validation sets
+split = sample.split(combined, 0.8)
+train = subset(combined, split == T)
+valid = subset(combined, split == F)
+
+rm(combined)
+
+```
+
+#### Create a document-feature matrix with unigrams:
+
+I'm interested in investigating whether the three data sources (blogs, news, and Twitter) have similar amounts of unique words. Naturally, the number of unique words will decrease once we remove stopwords and apply word stemming. However, I'm curious to see by how much, and whether this reduction will occur evenly across all data sets. I expect Twitter, being a more condensed form of communication, might contain the fewest unique words due to its limited character count and informal language usage.
+
+```{# Transfer to quanteda corpus format and segment into sentences (prediction.R)}
+train = fun.corpus(train)
+saveRDS(train,"train.RData")
+train<-readRDS("train.RData")
+# Tokenize (prediction.R)
+# Create a document-feature matrix with unigrams
+ngram1 <- VCorpus(VectorSource(train))
+# Remove data we do not need 
+ngram1 <- tm_map(ngram1, tolower)
+ngram1 <- tm_map(ngram1, removePunctuation)
+ngram1 <- tm_map(ngram1, removeNumbers)
+ngram1 <- tm_map(ngram1, removeWords, stopwords("english"))
+# Do stamming
+ngram1 <- ngram1(docs, stemDocument)
+# Strip whitespaces
+ngram1 <- tm_map(ngram1, stripWhitespace)
+
+# Store freqent n-grams in data frames
+df <- as.data.frame(as.matrix(docfreq(ngram1)))
+names(df)[1] <- "Frequency"
+df_sort <- sort(rowSums(df), decreasing = TRUE)
+df_unigrams <- data.frame(Term = names(df_sort), Frequency = df_sort)
+df_unigrams<-df_unigrams[df_unigrams$Frequency>100,]
+saveRDS(df_unigrams,"df_unigrams.RData")
+rm(df, df_sort,df_unigrams,ngram1)
+
+```
+
+```{r, echo=FALSE, out.width="80%"}
+knitr::include_graphics("unigram.png")
+```
+
+### Development Plan
+
+The upcoming steps for this capstone project focus on building and deploying a predictive model based on N-gram tokenization. Here’s the plan:
+
+1.  Build predictive models using N-gram tokenization techniques.
+
+2.  Optimize the code to improve processing speed.
+
+3.  Develop a Shiny App as the final data product, allowing users to input text and receive next-word predictions.
+
+4.  Create a presentation deck to pitch the predictive algorithm and Shiny App.
